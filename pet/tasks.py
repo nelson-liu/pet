@@ -886,6 +886,7 @@ def load_examples(task, data_dir: str, set_type: str, *_, num_examples: int = No
         examples = processor.get_train_examples(data_dir)
     elif set_type == UNLABELED_SET:
         examples = processor.get_unlabeled_examples(data_dir)
+        logger.info(f"Setting label of all unlabeled examples to {processor.get_labels()[0]}")
         for example in examples:
             example.label = processor.get_labels()[0]
     else:
