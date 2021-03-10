@@ -193,10 +193,11 @@ class MnliJsonlProcessor(DataProcessor):
             text_a = line["sentence1"]
             text_b = line["sentence2"]
             label = line["gold_label"]
+            if label not in ("contradiction", "entailment", "neutral"):
+                continue
 
             example = InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label)
             examples.append(example)
-
         return examples
 
     @staticmethod
