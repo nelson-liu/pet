@@ -20,7 +20,7 @@ import os
 import random
 from abc import ABC, abstractmethod
 from collections import defaultdict, Counter
-from typing import List, Dict, Callable
+from typing import Any, List, Dict, Callable
 
 import log
 from pet import task_helpers
@@ -163,6 +163,59 @@ class MnliProcessor(DataProcessor):
             for line in reader:
                 lines.append(line)
             return lines
+
+
+class MnliJsonlProcessor(DataProcessor):
+    """Processor for the MultiNLI data set (JSONlines formatted, as originally released)."""
+
+    def get_train_examples(self, data_dir):
+        return self._create_examples(MnliJsonlProcessor._read_jsonl(os.path.join(data_dir, "train.jsonl")), "train")
+
+    def get_dev_examples(self, data_dir):
+        return self._create_examples(MnliJsonlProcessor._read_jsonl(os.path.join(data_dir, "dev_matched.jsonl")), "dev_matched")
+
+    def get_test_examples(self, data_dir) -> List[InputExample]:
+        raise NotImplementedError()
+
+    def get_unlabeled_examples(self, data_dir) -> List[InputExample]:
+        return self.get_train_examples(data_dir)
+
+    def get_labels(self):
+        return ["contradiction", "entailment", "neutral"]
+
+    @staticmethod
+    def _create_examples(lines: List[Dict[str, Any]], set_type: str) -> List[InputExample]:
+        examples = []
+
+        # Start at 1 for consistency with the TSV-read data
+        for line in lines:
+            guid = "%s-%s" % (set_type, line["pairID"])
+            text_a = line["sentence1"]
+            text_b = line["sentence2"]
+            label = line["gold_label"]
+
+            example = InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label)
+            examples.append(example)
+
+        return examples
+
+    @staticmethod
+    def _read_jsonl(input_file):
+        with open(input_file) as f:
+            lines = []
+            for line in f:
+                lines.append(json.loads(line))
+            return lines
+
+
+class MnliMismatchedJsonlProcessor(MnliJsonlProcessor):
+    """Processor for the mismatched MultiNLI data set (JSONlines formatted, as originally released)."""
+
+    def get_dev_examples(self, data_dir):
+        return self._create_examples(self._read_jsonl(os.path.join(data_dir, "dev_mismatched.jsonl")), "dev_mismatched")
+
+    def get_test_examples(self, data_dir) -> List[InputExample]:
+        raise NotImplementedError()
 
 
 class MnliMismatchedProcessor(MnliProcessor):
@@ -765,6 +818,8 @@ class RecordProcessor(DataProcessor):
 PROCESSORS = {
     "mnli": MnliProcessor,
     "mnli-mm": MnliMismatchedProcessor,
+    "mnli-jsonl": MnliJsonlProcessor,
+    "mnli-mm-jsonl": MnliMismatchedJsonlProcessor,
     "agnews": AgnewsProcessor,
     "yahoo": YahooAnswersProcessor,
     "yelp-polarity": YelpPolarityProcessor,
