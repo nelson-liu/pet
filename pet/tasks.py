@@ -175,7 +175,7 @@ class MnliJsonlProcessor(DataProcessor):
         return self._create_examples(MnliJsonlProcessor._read_jsonl(os.path.join(data_dir, "dev_matched.jsonl")), "dev_matched")
 
     def get_test_examples(self, data_dir) -> List[InputExample]:
-        raise NotImplementedError()
+        return self._create_examples(MnliJsonlProcessor._read_jsonl(os.path.join(data_dir, "test.jsonl")), "test")
 
     def get_unlabeled_examples(self, data_dir) -> List[InputExample]:
         return self.get_train_examples(data_dir)
@@ -214,9 +214,6 @@ class MnliMismatchedJsonlProcessor(MnliJsonlProcessor):
 
     def get_dev_examples(self, data_dir):
         return self._create_examples(self._read_jsonl(os.path.join(data_dir, "dev_mismatched.jsonl")), "dev_mismatched")
-
-    def get_test_examples(self, data_dir) -> List[InputExample]:
-        raise NotImplementedError()
 
 
 class MnliMismatchedProcessor(MnliProcessor):
