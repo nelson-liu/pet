@@ -104,6 +104,9 @@ def main():
                         help="The name of the task to train/evaluate on")
     parser.add_argument("--output_dir", default=None, type=str, required=True,
                         help="The output directory where the model predictions and checkpoints will be written")
+    parser.add_argument("--load_dir", default=None, type=str,
+                        help=("If provided, will look for existing checkpoints here (before writing output to output_dir)."
+                              "Only implemented properly for PET training with no distillation"))
 
     # PET-specific optional parameters
     parser.add_argument("--wrapper_type", default="mlm", choices=WRAPPER_TYPES,
@@ -220,6 +223,9 @@ def main():
     if os.path.exists(args.output_dir) and os.listdir(args.output_dir) \
             and args.do_train and not args.overwrite_output_dir:
         raise ValueError("Output directory ({}) already exists and is not empty.".format(args.output_dir))
+    if args.load_dir and not os.path.exists(args.load_dir):
+        raise ValueError("Load directory ({}) does not exist.".format(args.output_dir))
+
 
     # Setup CUDA, GPU & distributed training
     args.device = "cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu"
@@ -264,7 +270,7 @@ def main():
 
     if args.method == 'pet':
         pet.train_pet(pet_model_cfg, pet_train_cfg, pet_eval_cfg, sc_model_cfg, sc_train_cfg, sc_eval_cfg,
-                      pattern_ids=args.pattern_ids, output_dir=args.output_dir,
+                      pattern_ids=args.pattern_ids, output_dir=args.output_dir, load_dir=args.load_dir,
                       ensemble_repetitions=args.pet_repetitions, final_repetitions=args.sc_repetitions,
                       reduction=args.reduction, train_data=train_data, unlabeled_data=unlabeled_data,
                       eval_data=eval_data, do_train=args.do_train, do_eval=args.do_eval,

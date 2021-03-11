@@ -215,7 +215,7 @@ def train_ipet(ensemble_model_config: WrapperConfig, ensemble_train_config: Trai
 
 def train_pet(ensemble_model_config: WrapperConfig, ensemble_train_config: TrainConfig,
               ensemble_eval_config: EvalConfig, final_model_config: WrapperConfig, final_train_config: TrainConfig,
-              final_eval_config: EvalConfig, pattern_ids: List[int], output_dir: str, ensemble_repetitions: int = 3,
+              final_eval_config: EvalConfig, pattern_ids: List[int], output_dir: str, load_dir: str, ensemble_repetitions: int = 3,
               final_repetitions: int = 1, reduction: str = 'wmean', train_data: List[InputExample] = None,
               unlabeled_data: List[InputExample] = None, eval_data: List[InputExample] = None, do_train: bool = True,
               do_eval: bool = True, no_distillation: bool = False, seed: int = 42):
@@ -230,6 +230,7 @@ def train_pet(ensemble_model_config: WrapperConfig, ensemble_train_config: Train
     :param final_eval_config: the evaluation configuration for the final distilled sequence classifier
     :param pattern_ids: the ids of all PVPs to use
     :param output_dir: the output directory
+    :param load_dir: the directory to load existing checkpoints from
     :param ensemble_repetitions: the number of training repetitions for each model corresponding to an individual PVP
     :param final_repetitions: the number of training repetitions for the final distilled sequence classifier
     :param reduction: the reduction strategy for merging predictions, either 'mean' or 'wmean'
@@ -244,8 +245,8 @@ def train_pet(ensemble_model_config: WrapperConfig, ensemble_train_config: Train
 
     # Step 1: Train an ensemble of models corresponding to individual patterns
     train_pet_ensemble(ensemble_model_config, ensemble_train_config, ensemble_eval_config, pattern_ids, output_dir,
-                       repetitions=ensemble_repetitions, train_data=train_data, unlabeled_data=unlabeled_data,
-                       eval_data=eval_data, do_train=do_train, do_eval=do_eval,
+                       load_dir, repetitions=ensemble_repetitions, train_data=train_data,
+                       unlabeled_data=unlabeled_data, eval_data=eval_data, do_train=do_train, do_eval=do_eval,
                        save_unlabeled_logits=not no_distillation, seed=seed)
 
     if no_distillation:
@@ -296,7 +297,7 @@ def train_classifier(model_config: WrapperConfig, train_config: TrainConfig, eva
 
 
 def train_pet_ensemble(model_config: WrapperConfig, train_config: TrainConfig, eval_config: EvalConfig,
-                       pattern_ids: List[int], output_dir: str, ipet_data_dir: str = None, repetitions: int = 3,
+                       pattern_ids: List[int], output_dir: str, load_dir: str, ipet_data_dir: str = None, repetitions: int = 3,
                        train_data: List[InputExample] = None, unlabeled_data: List[InputExample] = None,
                        eval_data: List[InputExample] = None, do_train: bool = True, do_eval: bool = True,
                        save_unlabeled_logits: bool = False, seed: int = 42):
@@ -308,6 +309,7 @@ def train_pet_ensemble(model_config: WrapperConfig, train_config: TrainConfig, e
     :param eval_config: the evaluation configuration to use
     :param pattern_ids: the ids of all PVPs to use
     :param output_dir: the output directory
+    :param load_dir: the directory to load existing models from
     :param ipet_data_dir: optional directory containing additional training data for iPET
     :param repetitions: the number of training repetitions
     :param train_data: the training examples to use
@@ -322,6 +324,10 @@ def train_pet_ensemble(model_config: WrapperConfig, train_config: TrainConfig, e
 
     results = defaultdict(lambda: defaultdict(list))
     set_seed(seed)
+    if load_dir:
+        logger.info(f"Using load_dir {load_dir}")
+    else:
+        logger.info("Using output_dir {output_dir} as the load_dir")
 
     for pattern_id in pattern_ids:
         for iteration in range(repetitions):
@@ -330,15 +336,25 @@ def train_pet_ensemble(model_config: WrapperConfig, train_config: TrainConfig, e
             results_dict = {}
 
             pattern_iter_output_dir = "{}/p{}-i{}".format(output_dir, pattern_id, iteration)
+            if load_dir:
+                pattern_iter_load_dir = "{}/p{}-i{}".format(load_dir, pattern_id, iteration)
+            else:
+                pattern_iter_load_dir = pattern_iter_output_dir
 
             if os.path.exists(pattern_iter_output_dir):
-                logger.warning(f"Path {pattern_iter_output_dir} already exists, skipping it...")
-                continue
-
-            if not os.path.exists(pattern_iter_output_dir):
+                logger.warning(f"Path {pattern_iter_output_dir} already exists")
+            else:
                 os.makedirs(pattern_iter_output_dir)
 
-            wrapper = init_model(model_config)
+            if os.path.exists(pattern_iter_load_dir):
+                logger.info(f"Loading serialized model from {pattern_iter_load_dir}...")
+                wrapper = TransformerModelWrapper.from_pretrained(pattern_iter_load_dir)
+                logger.info("Successfully loaded model!")
+                if do_train:
+                    logger.warning("@@ WILL CONTINUE TRAINING LOADED MODEL, THIS MAY NOT BE DESIRABLE @@")
+            else:
+                logger.info(f"Initializing new model with the model config {model_config}")
+                wrapper = init_model(model_config)
 
             # Training
             if do_train:
@@ -375,8 +391,6 @@ def train_pet_ensemble(model_config: WrapperConfig, train_config: TrainConfig, e
             # Evaluation
             if do_eval:
                 logger.info("Starting evaluation...")
-                if not wrapper:
-                    wrapper = TransformerModelWrapper.from_pretrained(pattern_iter_output_dir)
 
                 eval_result = evaluate(wrapper, eval_data, eval_config, priming_data=train_data)
 
