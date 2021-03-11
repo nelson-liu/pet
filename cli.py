@@ -241,12 +241,20 @@ def main():
 
     eval_set = TEST_SET if args.eval_set == 'test' else DEV_SET
 
-    train_data = load_examples(
-        args.task_name, args.data_dir, TRAIN_SET, num_examples=train_ex, num_examples_per_label=train_ex_per_label)
-    eval_data = load_examples(
-        args.task_name, args.data_dir, eval_set, num_examples=test_ex, num_examples_per_label=test_ex_per_label)
-    unlabeled_data = load_examples(
-        args.task_name, args.data_dir, UNLABELED_SET, num_examples=args.unlabeled_examples)
+    if args.do_train:
+        train_data = load_examples(
+            args.task_name, args.data_dir, TRAIN_SET, num_examples=train_ex, num_examples_per_label=train_ex_per_label)
+        unlabeled_data = load_examples(
+            args.task_name, args.data_dir, UNLABELED_SET, num_examples=args.unlabeled_examples)
+    else:
+        train_data = None
+        unlabeled_data = None
+
+    if args.do_eval:
+        eval_data = load_examples(
+            args.task_name, args.data_dir, eval_set, num_examples=test_ex, num_examples_per_label=test_ex_per_label)
+    else:
+        eval_data = None
 
     args.metrics = METRICS.get(args.task_name, DEFAULT_METRICS)
 
