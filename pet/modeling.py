@@ -373,7 +373,6 @@ def train_pet_ensemble(model_config: WrapperConfig, train_config: TrainConfig, e
                                                             ipet_train_data=ipet_train_data,
                                                             unlabeled_data=unlabeled_data,
                                                             output_dir=pattern_iter_output_dir)
-                import pdb; pdb.set_trace()
                 results_dict.update(train_results)
 
                 with open(os.path.join(pattern_iter_output_dir, 'results.txt'), 'w') as fh:
