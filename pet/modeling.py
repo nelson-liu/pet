@@ -487,7 +487,7 @@ def train_single_model(model: TransformerModelWrapper, train_data: List[InputExa
         )
         # Select the best model
         checkpoints_to_evaluate = [ckpt_dir for ckpt_dir in glob.glob(output_dir + "*") if
-                                   ckpt_dir[len(output_dir):].startswith("_epoch")]
+                                   ckpt_dir[len(output_dir):].startswith("_step")]
         logger.info(f"Evaluating checkpoints {checkpoints_to_evaluate} to find the best")
         checkpoints_to_scores = {}
         for checkpoint_to_evaluate in checkpoints_to_evaluate:
@@ -502,9 +502,9 @@ def train_single_model(model: TransformerModelWrapper, train_data: List[InputExa
         logger.info(f"Checkpoints and scores: {checkpoints_to_scores}")
         best_checkpoint = max(checkpoints_to_scores.items(), key=operator.itemgetter(1))[0]
         logger.info(f"Best checkpoint: {best_checkpoint}")
-        best_epoch = int(best_checkpoint[len(output_dir + "_epoch"):])
-        results_dict['global_step'] = epoch_to_global_step_and_train_loss[best_epoch][0]
-        results_dict['average_loss'] = epoch_to_global_step_and_train_loss[best_epoch][1]
+        best_step = int(best_checkpoint[len(output_dir + "_step"):])
+        results_dict['global_step'] = epoch_to_global_step_and_train_loss[best_step][0]
+        results_dict['average_loss'] = epoch_to_global_step_and_train_loss[best_step][1]
 
         # Load the model with the best weights
         logger.info(f"Loading best model from {best_checkpoint}")

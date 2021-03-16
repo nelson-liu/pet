@@ -268,7 +268,7 @@ class TransformerModelWrapper:
 
         global_step = 0
         tr_loss, logging_loss = 0.0, 0.0
-        epoch_to_global_step_and_train_loss = {}
+        step_to_global_step_and_train_loss = {}
         self.model.zero_grad()
 
         train_iterator = trange(int(num_train_epochs), desc="Epoch")
@@ -327,20 +327,21 @@ class TransformerModelWrapper:
 
                         print(json.dumps({**logs, **{'step': global_step}}))
 
+                    if output_dir and global_step % 100 == 0:
+                        # Save a checkpoint at the end of this epoch.
+                        step_save_path = (output_dir + f"_step{global_step}")
+                        logger.info(f"Saving model to {step_save_path}")
+                        self.save(step_save_path)
+                        step_to_global_step_and_train_loss[global_step] = (global_step, (tr_loss / global_step if global_step > 0 else -1))
+
                 if 0 < max_steps < global_step:
                     epoch_iterator.close()
                     break
-            if output_dir:
-                # Save a checkpoint at the end of this epoch.
-                epoch_save_path = (output_dir + f"_epoch{epoch_num}")
-                logger.info(f"Saving model to {epoch_save_path}")
-                self.save(epoch_save_path)
-                epoch_to_global_step_and_train_loss[epoch_num] = (global_step, (tr_loss / global_step if global_step > 0 else -1))
             if 0 < max_steps < global_step:
                 train_iterator.close()
                 break
 
-        return epoch_to_global_step_and_train_loss
+        return step_to_global_step_and_train_loss
 
     def eval(self, eval_data: List[InputExample], device, per_gpu_eval_batch_size: int = 8, n_gpu: int = 1,
              priming: bool = False, decoding_strategy: str = 'default') -> Dict:
