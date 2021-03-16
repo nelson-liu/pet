@@ -196,7 +196,7 @@ class TransformerModelWrapper:
               learning_rate: float = 5e-5, adam_epsilon: float = 1e-8, warmup_steps=0, max_grad_norm: float = 1,
               logging_steps: int = 50, per_gpu_unlabeled_batch_size: int = 8, unlabeled_data: List[InputExample] = None,
               lm_training: bool = False, use_logits: bool = False, alpha: float = 0.8, temperature: float = 1,
-              max_steps=-1, **_):
+              max_steps=-1, output_dir: str = None, **_):
         """
         Train the underlying language model.
 
@@ -219,6 +219,7 @@ class TransformerModelWrapper:
         :param alpha: the alpha parameter for auxiliary language modeling
         :param temperature: the temperature for knowledge distillation
         :param max_steps: the maximum number of training steps, overrides ``num_train_epochs``
+        :param output_dir: path to save the best trained single model.
         :return: a tuple consisting of the total number of steps and the average training loss
         """
 
@@ -267,11 +268,12 @@ class TransformerModelWrapper:
 
         global_step = 0
         tr_loss, logging_loss = 0.0, 0.0
+        epoch_to_global_step_and_train_loss = {}
         self.model.zero_grad()
 
         train_iterator = trange(int(num_train_epochs), desc="Epoch")
 
-        for _ in train_iterator:
+        for epoch_num in train_iterator:
             epoch_iterator = tqdm(train_dataloader, desc="Iteration")
             for step, batch in enumerate(epoch_iterator):
                 self.model.train()
@@ -328,11 +330,17 @@ class TransformerModelWrapper:
                 if 0 < max_steps < global_step:
                     epoch_iterator.close()
                     break
+            if output_dir:
+                # Save a checkpoint at the end of this epoch.
+                epoch_save_path = (output_dir + f"_epoch{epoch_num}")
+                logger.info(f"Saving model to {epoch_save_path}")
+                self.save(epoch_save_path)
+                epoch_to_global_step_and_train_loss[epoch_num] = (global_step, (tr_loss / global_step if global_step > 0 else -1))
             if 0 < max_steps < global_step:
                 train_iterator.close()
                 break
 
-        return global_step, (tr_loss / global_step if global_step > 0 else -1)
+        return epoch_to_global_step_and_train_loss
 
     def eval(self, eval_data: List[InputExample], device, per_gpu_eval_batch_size: int = 8, n_gpu: int = 1,
              priming: bool = False, decoding_strategy: str = 'default') -> Dict:

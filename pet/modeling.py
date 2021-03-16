@@ -10,9 +10,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import ast
+import glob
 import json
 import os
+import operator
 import random
+import shutil
 import statistics
 from abc import ABC
 from collections import defaultdict
@@ -327,7 +330,7 @@ def train_pet_ensemble(model_config: WrapperConfig, train_config: TrainConfig, e
     if load_dir:
         logger.info(f"Using load_dir {load_dir}")
     else:
-        logger.info("Using output_dir {output_dir} as the load_dir")
+        logger.info(f"Using output_dir {output_dir} as the load_dir")
 
     for pattern_id in pattern_ids:
         for iteration in range(repetitions):
@@ -341,11 +344,6 @@ def train_pet_ensemble(model_config: WrapperConfig, train_config: TrainConfig, e
             else:
                 pattern_iter_load_dir = pattern_iter_output_dir
 
-            if os.path.exists(pattern_iter_output_dir):
-                logger.warning(f"Path {pattern_iter_output_dir} already exists")
-            else:
-                os.makedirs(pattern_iter_output_dir)
-
             if os.path.exists(pattern_iter_load_dir):
                 logger.info(f"Loading serialized model from {pattern_iter_load_dir}...")
                 wrapper = TransformerModelWrapper.from_pretrained(pattern_iter_load_dir)
@@ -355,6 +353,11 @@ def train_pet_ensemble(model_config: WrapperConfig, train_config: TrainConfig, e
             else:
                 logger.info(f"Initializing new model with the model config {model_config}")
                 wrapper = init_model(model_config)
+
+            if os.path.exists(pattern_iter_output_dir):
+                logger.warning(f"Path {pattern_iter_output_dir} already exists")
+            else:
+                os.makedirs(pattern_iter_output_dir)
 
             # Training
             if do_train:
@@ -366,9 +369,12 @@ def train_pet_ensemble(model_config: WrapperConfig, train_config: TrainConfig, e
                 else:
                     ipet_train_data = None
 
-                results_dict.update(train_single_model(wrapper, train_data, train_config, eval_config,
-                                                       ipet_train_data=ipet_train_data,
-                                                       unlabeled_data=unlabeled_data))
+                wrapper, train_results = train_single_model(wrapper, train_data, train_config, eval_data, eval_config,
+                                                            ipet_train_data=ipet_train_data,
+                                                            unlabeled_data=unlabeled_data,
+                                                            output_dir=pattern_iter_output_dir)
+                import pdb; pdb.set_trace()
+                results_dict.update(train_results)
 
                 with open(os.path.join(pattern_iter_output_dir, 'results.txt'), 'w') as fh:
                     fh.write(str(results_dict))
@@ -420,19 +426,22 @@ def train_pet_ensemble(model_config: WrapperConfig, train_config: TrainConfig, e
 
 
 def train_single_model(model: TransformerModelWrapper, train_data: List[InputExample], config: TrainConfig,
-                       eval_config: EvalConfig = None, ipet_train_data: List[InputExample] = None,
-                       unlabeled_data: List[InputExample] = None, return_train_set_results: bool = True):
+                       eval_data: List[InputExample], eval_config: EvalConfig = None,
+                       ipet_train_data: List[InputExample] = None, unlabeled_data: List[InputExample] = None,
+                       return_train_set_results: bool = True, return_eval_set_results: bool = True, output_dir: str = None):
     """
     Train a single model.
 
     :param model: the model to train
     :param train_data: the training examples to use
     :param config: the training config
+    :param eval_data: the evaluation examples to use
     :param eval_config: the evaluation config
     :param ipet_train_data: an optional list of iPET training examples to use
     :param unlabeled_data: an optional list of unlabeled examples to use
     :param return_train_set_results: whether results on the train set before and after training should be computed and
            returned
+    :param output_dir: path to save the best trained single model.
     :return: a dictionary containing the global step, average loss and (optionally) results on the train set
     """
 
@@ -447,12 +456,15 @@ def train_single_model(model: TransformerModelWrapper, train_data: List[InputExa
     if train_data and return_train_set_results:
         results_dict['train_set_before_training'] = evaluate(model, train_data, eval_config)['scores']['acc']
 
+    if eval_data and return_eval_set_results:
+        results_dict['eval_set_before_training'] = evaluate(model, eval_data, eval_config)['scores']['acc']
+
     all_train_data = train_data + ipet_train_data
 
     if not all_train_data and not config.use_logits:
         logger.warning('Training method was called without training examples')
     else:
-        global_step, tr_loss = model.train(
+        epoch_to_global_step_and_train_loss = model.train(
             all_train_data, device,
             per_gpu_train_batch_size=config.per_gpu_train_batch_size,
             per_gpu_unlabeled_batch_size=config.per_gpu_unlabeled_batch_size,
@@ -469,15 +481,49 @@ def train_single_model(model: TransformerModelWrapper, train_data: List[InputExa
             lm_training=config.lm_training,
             use_logits=config.use_logits,
             alpha=config.alpha,
-            temperature=config.temperature
+            temperature=config.temperature,
+            eval_data=eval_data,
+            output_dir=output_dir,
         )
-        results_dict['global_step'] = global_step
-        results_dict['average_loss'] = tr_loss
+        # Select the best model
+        checkpoints_to_evaluate = [ckpt_dir for ckpt_dir in glob.glob(output_dir + "*") if
+                                   ckpt_dir[len(output_dir):].startswith("_epoch")]
+        logger.info(f"Evaluating checkpoints {checkpoints_to_evaluate} to find the best")
+        checkpoints_to_scores = {}
+        for checkpoint_to_evaluate in checkpoints_to_evaluate:
+            logger.info(f"Evaluating checkpoint: {checkpoint_to_evaluate}")
+            model.model = None
+            model = None
+            torch.cuda.empty_cache()
+            model = TransformerModelWrapper.from_pretrained(checkpoint_to_evaluate)
+            model.model.to(device)
+            checkpoints_to_scores[checkpoint_to_evaluate] = evaluate(model, eval_data, eval_config)['scores']['acc']
+        # Get the best checkpoint
+        logger.info(f"Checkpoints and scores: {checkpoints_to_scores}")
+        best_checkpoint = max(checkpoints_to_scores.items(), key=operator.itemgetter(1))[0]
+        logger.info(f"Best checkpoint: {best_checkpoint}")
+        best_epoch = int(best_checkpoint[len(output_dir + "_epoch"):])
+        results_dict['global_step'] = epoch_to_global_step_and_train_loss[best_epoch][0]
+        results_dict['average_loss'] = epoch_to_global_step_and_train_loss[best_epoch][1]
+
+        # Load the model with the best weights
+        logger.info(f"Loading best model from {best_checkpoint}")
+        model.model = None
+        model = None
+        torch.cuda.empty_cache()
+        model = TransformerModelWrapper.from_pretrained(best_checkpoint)
+        model.model.to(device)
+        for checkpoint_to_evaluate in checkpoints_to_evaluate:
+            logger.info(f"Deleting checkpoint: {checkpoint_to_evaluate}")
+            shutil.rmtree(checkpoint_to_evaluate)
 
     if train_data and return_train_set_results:
         results_dict['train_set_after_training'] = evaluate(model, train_data, eval_config)['scores']['acc']
 
-    return results_dict
+    if eval_data and return_eval_set_results:
+        results_dict['eval_set_after_training'] = evaluate(model, eval_data, eval_config)['scores']['acc']
+
+    return model, results_dict
 
 
 def evaluate(model: TransformerModelWrapper, eval_data: List[InputExample], config: EvalConfig,
