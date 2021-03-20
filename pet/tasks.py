@@ -169,13 +169,13 @@ class MnliJsonlProcessor(DataProcessor):
     """Processor for the MultiNLI data set (JSONlines formatted, as originally released)."""
 
     def get_train_examples(self, data_dir):
-        return self._create_examples(MnliJsonlProcessor._read_jsonl(os.path.join(data_dir, "train.jsonl")), "train")
+        return self._create_examples(MnliJsonlProcessor._read_jsonl(os.path.join(data_dir, "train.json")), "train")
 
     def get_dev_examples(self, data_dir):
-        return self._create_examples(MnliJsonlProcessor._read_jsonl(os.path.join(data_dir, "dev_matched.jsonl")), "dev_matched")
+        return self._create_examples(MnliJsonlProcessor._read_jsonl(os.path.join(data_dir, "dev.json")), "dev")
 
     def get_test_examples(self, data_dir) -> List[InputExample]:
-        return self._create_examples(MnliJsonlProcessor._read_jsonl(os.path.join(data_dir, "test.jsonl")), "test")
+        return self._create_examples(MnliJsonlProcessor._read_jsonl(os.path.join(data_dir, "test.json")), "test")
 
     def get_unlabeled_examples(self, data_dir) -> List[InputExample]:
         return self.get_train_examples(data_dir)
@@ -213,7 +213,7 @@ class MnliMismatchedJsonlProcessor(MnliJsonlProcessor):
     """Processor for the mismatched MultiNLI data set (JSONlines formatted, as originally released)."""
 
     def get_dev_examples(self, data_dir):
-        return self._create_examples(self._read_jsonl(os.path.join(data_dir, "dev_mismatched.jsonl")), "dev_mismatched")
+        return self._create_examples(self._read_jsonl(os.path.join(data_dir, "dev.json")), "dev")
 
 
 class MnliMismatchedProcessor(MnliProcessor):
