@@ -266,6 +266,7 @@ class TransformerModelWrapper:
         if n_gpu > 1:
             self.model = torch.nn.DataParallel(self.model)
 
+        step = 0
         global_step = 0
         tr_loss, logging_loss = 0.0, 0.0
         step_to_global_step_and_train_loss = {}
@@ -275,7 +276,7 @@ class TransformerModelWrapper:
 
         for epoch_num in train_iterator:
             epoch_iterator = tqdm(train_dataloader, desc="Iteration")
-            for step, batch in enumerate(epoch_iterator):
+            for _, batch in enumerate(epoch_iterator):
                 self.model.train()
                 unlabeled_batch = None
 
@@ -337,6 +338,7 @@ class TransformerModelWrapper:
                 if 0 < max_steps < global_step:
                     epoch_iterator.close()
                     break
+                step += 1
             if 0 < max_steps < global_step:
                 train_iterator.close()
                 break
