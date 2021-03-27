@@ -245,7 +245,7 @@ class TransformerModelWrapper:
 
         if max_steps > 0:
             t_total = max_steps
-            num_train_epochs = max_steps // (max(1, len(train_dataloader) // gradient_accumulation_steps)) + 1
+            num_train_epochs = int(round(max_steps / (len(train_dataloader) / gradient_accumulation_steps)) + 1)
         else:
             t_total = len(train_dataloader) // gradient_accumulation_steps * num_train_epochs
 
